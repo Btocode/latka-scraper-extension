@@ -1,0 +1,22 @@
+{
+  "name": "latka-scraper-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension for scraping Latka SaaS companies data",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "build": "echo 'Extension ready for production'",
+    "watch": "npm run dev"
+  },
+  "devDependencies": {
+    "chokidar": "^3.5.3",
+    "ws": "^8.14.2"
+  },
+  "keywords": [
+    "chrome-extension",
+    "scraper",
+    "latka",
+    "saas"
+  ],
+  "author": "Developer",
+  "license": "MIT"
+}

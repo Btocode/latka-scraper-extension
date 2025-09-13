@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Latka Data Scraper",
+  "version": "1.0",
+  "description": "Automatically scrape data from GetLatka SaaS companies page",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://getlatka.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://getlatka.com/saas-companies*"],
+      "js": ["content.js"],
+      "css": ["sidebar.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_title": "Latka Data Scraper",
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["hot-reload.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
