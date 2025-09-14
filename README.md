@@ -1,15 +1,50 @@
-# Latka Data Scraper Extension
+# Latka Data Scraper Chrome Extension
 
-A Chrome extension for automatically scraping SaaS company data from GetLatka.com.
+A powerful Chrome extension for scraping company data from GetLatka's SaaS companies page and exporting it directly to Google Sheets using Google Apps Script.
+
+## Prerequisites
+
+- **Latka Account**: You must have an active account at [GetLatka](https://getlatka.com) to access the SaaS companies data
+- **Google Account**: Required for setting up Google Apps Script and Google Sheets integration
+- **Chrome Browser**: Extension is built for Chromium-based browsers
+
+## Installation
+
+### 1. Clone the Repository
+```bash
+git clone <repository-url>
+cd latka-scraper-extension
+```
+
+### 2. Install Dependencies
+```bash
+npm install
+```
+
+### 3. Build the Extension
+```bash
+npm run build
+```
+This will generate a `dist` folder containing the compiled extension files.
+
+### 4. Load Extension in Chrome
+
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Turn on **Developer mode** (toggle in the top right corner)
+3. Click **Load unpacked**
+4. Select the generated `dist` folder
+5. Voila! The extension is now installed
 
 ## 🚀 Features
 
 - **Automatic Data Extraction**: Scrapes company data from Latka's SaaS companies page
+- **Google Sheets Integration**: Direct export to Google Sheets via Apps Script
+- **Data Deduplication**: Prevents duplicate entries in your spreadsheet
 - **Smart Filtering**: Automatically excludes Interview columns
-- **Data Export**: Export scraped data to console or download as JSON
-- **Modern UI**: Clean, premium sidebar interface with dark theme
+- **CORS-Free Export**: Background script handles all external requests
+- **Modern UI**: Clean, premium sidebar interface with smooth animations
+- **Real-time Progress**: Visual feedback during scraping process
 - **Hot Reload**: Development server with automatic reloading
-- **Optimized Build**: Production-ready builds with minification
 
 ## 📁 Project Structure
 
@@ -75,11 +110,30 @@ latka-scraper-extension/
 
 ## 🎯 Usage
 
-1. **Install the extension** in Chrome
-2. **Navigate** to [getlatka.com/saas-companies](https://getlatka.com/saas-companies)
-3. **Sidebar appears automatically** on the right side
-4. **Click "Start Scraping"** to extract data
-5. **Export data** when scraping is complete
+### 1. Access GetLatka
+- Click on the extension icon in your Chrome toolbar
+- Click **Open Latka** - this will navigate you to the GetLatka SaaS companies dashboard
+- Make sure you're logged into your Latka account
+
+### 2. Start Scraping
+- On the GetLatka page, the extension will automatically inject a sidebar
+- Open the sidebar from the extension interface
+- Click **Start Scraping** to begin collecting company data
+- The extension will automatically scroll through pages and gather all available data
+
+### 3. Configure Google Sheets Export
+
+Before exporting data, you need to set up Google Apps Script integration:
+
+1. **Set up Google Apps Script** (see [APPSCRIPT.md](./APPSCRIPT.md) for detailed guide)
+2. From the sidebar, click **Configure Google Sheets**
+3. In the configuration modal, add your Apps Script URL
+4. The Apps Script URL format: `https://script.google.com/macros/s/{SCRIPT_ID}/exec`
+
+### 4. Export Data
+- Once scraping is complete and Google Apps Script is configured
+- Click **Export to Google Sheets**
+- Data will be automatically sent to your configured Google Sheet with deduplication
 
 ## 🔧 Build Configuration
 
@@ -122,6 +176,18 @@ The extension uses:
 - **Responsive Design**: Works on different screen sizes
 - **Smooth Animations**: CSS transitions and transforms
 
+## Troubleshooting
+
+### Common Issues
+
+1. **CORS Errors**: The extension uses background scripts to bypass CORS restrictions
+2. **Scraping Not Working**: Ensure you're logged into GetLatka and on the correct page
+3. **Export Failing**: Verify your Apps Script URL is correct and the script is deployed
+
+### Support
+
+For issues and feature requests, please check the project's issue tracker or documentation.
+
 ## 🔒 Permissions
 
 The extension requires minimal permissions:
@@ -132,4 +198,4 @@ The extension requires minimal permissions:
 
 ## 📝 License
 
-MIT License - see LICENSE file for details.
+This project is for educational and personal use. Please respect GetLatka's terms of service when using this extension.

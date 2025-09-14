@@ -66,15 +66,20 @@ module.exports = (env, argv) => {
         new TerserPlugin({
           terserOptions: {
             compress: {
-              drop_console: true,
+              drop_console: false, // Keep console logs for extension debugging
               drop_debugger: true,
+              pure_funcs: [], // Don't remove any functions
             },
             mangle: {
-              reserved: ['chrome', 'browser'],
+              reserved: ['chrome', 'browser', 'window', 'document', 'exports', 'module'],
+            },
+            format: {
+              comments: false,
             },
           },
         }),
       ],
+      concatenateModules: false, // Disable module concatenation for extensions
     },
     devtool: isProduction ? false : 'cheap-module-source-map',
     resolve: {
