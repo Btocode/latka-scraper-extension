@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Latka Data Scraper",
+  "name": "Latka Data Scraper (Dev)",
   "version": "1.0.0",
   "description": "Automatically scrape data from GetLatka SaaS companies page",
   "permissions": [
@@ -10,8 +10,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://getlatka.com/*",
-    "https://script.google.com/*"
+    "https://getlatka.com/*"
   ],
   "content_scripts": [
     {
@@ -39,5 +38,11 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["hot-reload.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

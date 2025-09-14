@@ -3,12 +3,24 @@
   "version": "1.0.0",
   "description": "Chrome extension for scraping Latka SaaS companies data",
   "scripts": {
-    "dev": "node dev-server.js",
-    "build": "echo 'Extension ready for production'",
-    "watch": "npm run dev"
+    "dev": "node scripts/dev.js",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "postbuild": "node validate-extension.js",
+    "start": "npm run dev",
+    "validate": "node validate-extension.js"
   },
   "devDependencies": {
     "chokidar": "^3.5.3",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.8.1",
+    "mini-css-extract-plugin": "^2.7.6",
+    "rimraf": "^5.0.5",
+    "terser-webpack-plugin": "^5.3.9",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4",
     "ws": "^8.14.2"
   },
   "keywords": [

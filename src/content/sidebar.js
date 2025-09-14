@@ -1,13 +1,19 @@
-// Content script for Latka Data Scraper
+// Sidebar functionality for Latka Data Scraper
+import '../assets/sidebar.css';
+
 let sidebarVisible = false;
 let sidebarElement = null;
 let sidebarKeepOpen = false;
 
-function isTargetPage() {
+// Global variable to store scraped data
+let scrapedTableData = [];
+let hasScrapedData = false;
+
+export function isTargetPage() {
   return window.location.href.includes('getlatka.com/saas-companies');
 }
 
-function createSidebar() {
+export function createSidebar() {
   if (sidebarElement) return sidebarElement;
 
   const sidebar = document.createElement('div');
@@ -57,6 +63,17 @@ function createSidebar() {
         </div>
       </div>
       
+      <div class="sheets-section" id="sheets-section" style="display: none;">
+        <div class="section-title">Google Sheets</div>
+        <div class="sheets-config">
+          <div class="sheets-status" id="sheets-status">
+            <span class="sheets-indicator">📊</span>
+            <span class="sheets-text" id="sheets-text">No sheet connected</span>
+            <button id="configure-sheets" class="configure-btn">Configure</button>
+          </div>
+        </div>
+      </div>
+      
       <div class="data-section" id="data-section" style="display: none;">
         <div class="section-title">
           Data Preview
@@ -72,15 +89,10 @@ function createSidebar() {
   document.body.appendChild(sidebar);
   sidebarElement = sidebar;
 
-  // Add event listeners
-  document.getElementById('close-sidebar').addEventListener('click', hideSidebar);
-  document.getElementById('toggle-keep-open').addEventListener('click', toggleKeepOpen);
-  document.getElementById('start-scraping').addEventListener('click', startScraping);
-
   return sidebar;
 }
 
-function showSidebar() {
+export function showSidebar() {
   if (!sidebarElement) {
     createSidebar();
   }
@@ -96,7 +108,7 @@ function showSidebar() {
   chrome.runtime.sendMessage({action: 'updateBadge', text: '●'});
 }
 
-function hideSidebar() {
+export function hideSidebar() {
   if (sidebarElement) {
     sidebarElement.classList.add('hidden');
     document.body.style.paddingRight = '0';
@@ -107,7 +119,7 @@ function hideSidebar() {
   }
 }
 
-function updateStatus(message, isActive = true) {
+export function updateStatus(message, isActive = true) {
   const statusText = document.querySelector('.status-text');
   const statusDot = document.querySelector('.status-dot');
   
@@ -117,10 +129,6 @@ function updateStatus(message, isActive = true) {
     statusDot.classList.toggle('loading', !isActive);
   }
 }
-
-// Global variable to store scraped data
-let scrapedTableData = [];
-let hasScrapedData = false;
 
 function extractCellData(cell) {
   const cellData = {
@@ -162,50 +170,93 @@ function extractCellData(cell) {
 }
 
 function scrapeLatkaTable() {
-  const table = document.querySelector('table.data-table_table__SwBLY');
-  if (!table) {
-    console.warn('Latka table not found');
+  const tables = Array.from(document.querySelectorAll('table'));
+  const requestedColumns = [
+    'Name',
+    'company_links', // Column for comma-separated company links
+    'Funding',
+    'Valuation',
+    'Growth',
+    'Founder',
+    'founder_links', // Column for comma-separated founder links
+    'Team Size',
+    'Founded',
+    'Location',
+    'Industry'
+  ];
+
+  const jsonDataWithAllLinks = [];
+
+  // Assuming the first table is the main data table
+  const mainTable = tables[0];
+  if (!mainTable) {
+    console.error("No table found on the page.");
     return [];
   }
-  
-  const rows = table.querySelectorAll('tr');
-  const scrapedData = [];
-  let interviewColumnIndex = -1;
-  
-  // First, find the Interview column index
+
+  const rows = Array.from(mainTable.querySelectorAll('tr'));
+
   if (rows.length > 0) {
-    const headerCells = rows[0].querySelectorAll('th, td');
-    headerCells.forEach((cell, index) => {
-      const cellText = cell.textContent.trim().toLowerCase();
-      if (cellText.includes('interview')) {
-        interviewColumnIndex = index;
-      }
+    const headers = Array.from(rows[0].querySelectorAll('th, td')).map(cell => cell.innerText.trim());
+
+    // Process all data rows
+    const rowsToProcess = rows.slice(1);
+
+    rowsToProcess.forEach(row => {
+      const cells = Array.from(row.querySelectorAll('th, td'));
+      const rowData = {};
+
+      requestedColumns.forEach(reqCol => {
+          let cellIndex = -1;
+          let cell = null;
+
+          // Determine which table cell to look in based on the requested column
+          if (reqCol === 'Name' || reqCol === 'company_links') {
+              cellIndex = headers.indexOf('Name');
+          } else if (reqCol === 'Founder' || reqCol === 'founder_links') {
+               cellIndex = headers.indexOf('Founder');
+          } else {
+               cellIndex = headers.indexOf(reqCol);
+          }
+
+          if (cellIndex > -1 && cellIndex < cells.length) {
+               cell = cells[cellIndex];
+
+               if (reqCol === 'company_links') {
+                  // Collect all link hrefs from the Name cell and join with comma
+                  const links = Array.from(cell.querySelectorAll('a'));
+                  rowData[reqCol] = links.map(link => link.href).join(',');
+
+               } else if (reqCol === 'founder_links') {
+                   // Collect all link hrefs from the Founder cell and join with comma
+                  const links = Array.from(cell.querySelectorAll('a'));
+                  rowData[reqCol] = links.map(link => link.href).join(',');
+
+               }
+              else {
+                // For regular columns, just get the text content
+                rowData[reqCol] = cell.innerText.trim();
+              }
+          } else {
+               // If a requested column's base cell (Name/Founder or the direct column) is not found
+               // Initialize the property with an empty string
+               rowData[reqCol] = '';
+          }
+      });
+       // Ensure all requested columns are in the output, adding empty strings if not found
+      requestedColumns.forEach(col => {
+        if (!rowData.hasOwnProperty(col)) {
+             rowData[col] = '';
+        }
+      });
+      jsonDataWithAllLinks.push(rowData);
     });
   }
-  
-  rows.forEach((row, rowIndex) => {
-    const cells = row.querySelectorAll('th, td');
-    const rowData = [];
-    
-    cells.forEach((cell, cellIndex) => {
-      // Skip the Interview column
-      if (cellIndex === interviewColumnIndex) {
-        return;
-      }
-      
-      const cellData = extractCellData(cell);
-      rowData.push(cellData);
-    });
-    
-    if (rowData.length > 0) {
-      scrapedData.push(rowData);
-    }
-  });
-  
-  return scrapedData;
+
+  return jsonDataWithAllLinks;
 }
 
-function startScraping() {
+export function startScraping() {
   updateStatus('Scraping in progress...', false);
   const startBtn = document.getElementById('start-scraping');
   const exportBtn = document.getElementById('export-data');
@@ -235,14 +286,10 @@ function startScraping() {
       if (scrapedTableData.length > 0) {
         // Display preview (first few rows)
         const previewData = scrapedTableData.slice(0, 5).map(row => {
-          const nameCell = row[1]; // Name column
-          const revenueCell = row[2]; // Revenue column
-          const teamSizeCell = row[11]; // Team Size column
-          
           return {
-            name: nameCell?.text || 'N/A',
-            revenue: revenueCell?.text || 'N/A',
-            teamSize: teamSizeCell?.text || 'N/A'
+            name: row.Name || 'N/A',
+            revenue: row.Funding || 'N/A',
+            teamSize: row['Team Size'] || 'N/A'
           };
         });
         
@@ -251,7 +298,7 @@ function startScraping() {
         showDataSections();
         updateActionButtons(true);
         
-        document.getElementById('companies-count').textContent = scrapedTableData.length - 1; // Subtract header row
+        document.getElementById('companies-count').textContent = scrapedTableData.length;
         hasScrapedData = true;
       } else {
         updateStatus('No data found', false);
@@ -259,7 +306,6 @@ function startScraping() {
         hasScrapedData = false;
       }
     } catch (error) {
-      console.error('Scraping error:', error);
       updateStatus('Scraping failed', false);
       displayScrapedData([]);
       hasScrapedData = false;
@@ -270,19 +316,15 @@ function startScraping() {
   }, 1000);
 }
 
-function showDataSections() {
-  // Show data preview and statistics sections
+export function showDataSections() {
+  // Show data preview, statistics, and sheets sections
   document.getElementById('data-section').style.display = 'block';
   document.getElementById('stats-section').style.display = 'block';
+  document.getElementById('sheets-section').style.display = 'block';
   
-  // Add event listener for view all link
-  const viewAllLink = document.getElementById('view-all-data');
-  if (viewAllLink && !viewAllLink.hasAttribute('data-listener')) {
-    viewAllLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      showAllDataModal();
-    });
-    viewAllLink.setAttribute('data-listener', 'true');
+  // Initialize Google Sheets UI (will be handled by configuration modal module)
+  if (window.initializeGoogleSheetsUI) {
+    window.initializeGoogleSheetsUI();
   }
 }
 
@@ -355,149 +397,89 @@ function displayScrapedData(data) {
   viewAllLink.style.display = 'inline';
 }
 
-function exportData() {
+async function exportData() {
   if (scrapedTableData.length === 0) {
-    console.warn('No data to export. Please scrape data first.');
+    showNotification('No data to export. Please scrape data first.', 'warning');
     return;
   }
   
-  // Create a detailed summary for console
-  const summary = {
-    timestamp: new Date().toISOString(),
-    totalRows: scrapedTableData.length,
-    totalCompanies: scrapedTableData.length - 1, // Exclude header
-    columns: scrapedTableData[0]?.map(cell => cell.text) || [],
-    source: 'getlatka.com/saas-companies'
-  };
-  
-  console.group('🚀 Latka Scraper - Export Results');
-  console.log('📊 Summary:', summary);
-  console.log('📋 Complete Data Structure:');
-  console.log(JSON.stringify(scrapedTableData, null, 2));
-  console.groupEnd();
-  
-  // Also log the raw array for easy copy-paste
-  console.log('🔍 Raw Data Array:', scrapedTableData);
-  
-  // Create downloadable JSON (optional enhancement)
-  const dataStr = JSON.stringify(scrapedTableData, null, 2);
-  const dataBlob = new Blob([dataStr], { type: 'application/json' });
-  
-  // Show success message with more details
   const exportBtn = document.getElementById('export-data');
   const originalHTML = exportBtn.innerHTML;
-  exportBtn.innerHTML = '<span class="icon success-icon">✓</span>Exported!';
-  exportBtn.classList.add('success');
   
-  // Update stats
-  const companiesCount = document.getElementById('companies-count');
-  if (companiesCount) {
-    companiesCount.textContent = scrapedTableData.length - 1;
+  // Check if Apps Script is configured (will be handled by configuration modal module)
+  const appsScriptUrl = window.getAppsScriptUrl ? window.getAppsScriptUrl() : null;
+
+  if (!appsScriptUrl) {
+    // Show configuration modal (will be handled by configuration modal module)
+    if (window.showGoogleSheetsModal) {
+      window.showGoogleSheetsModal();
+    }
+    return;
+  }
+  
+  // Export to Google Sheets via Apps Script
+  exportBtn.innerHTML = '<span class="loading-spinner"></span>Exporting...';
+  exportBtn.disabled = true;
+  
+  try {
+    const values = flattenToValues(scrapedTableData);
+    const clearSheet = localStorage.getItem('latka-clear-sheet') === 'true';
+    
+    await exportViaAppsScript(values, appsScriptUrl, { clear: clearSheet });
+
+    exportBtn.innerHTML = '<span class="icon success-icon">✓</span>Exported!';
+    exportBtn.classList.add('success');
+
+    // Show success notification
+    const companyCount = values.length - 1; // Subtract header row
+    showNotification(`✅ Successfully exported ${companyCount} companies to your Google Sheet!`, 'success');
+
+    
+  } catch (error) {
+    exportBtn.innerHTML = '<span class="icon">❌</span>Failed';
+    exportBtn.classList.add('error');
+    showNotification('Export failed. Check Apps Script URL and permissions.', 'error');
   }
   
   setTimeout(() => {
     exportBtn.innerHTML = originalHTML;
-    exportBtn.classList.remove('success');
+    exportBtn.classList.remove('success', 'error');
+    exportBtn.disabled = false;
   }, 3000);
-  
-  // Show a temporary notification
-  showNotification(`Exported ${scrapedTableData.length - 1} companies to console`, 'success');
 }
 
-function showAllDataModal() {
-  if (scrapedTableData.length === 0) return;
-  
-  // Create modal
-  const modal = document.createElement('div');
-  modal.className = 'latka-modal';
-  modal.id = 'data-modal';
-  
-  // Get column headers from first row
-  const headers = scrapedTableData[0] || [];
-  const dataRows = scrapedTableData.slice(1); // Skip header row
-  
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>All Scraped Data (${dataRows.length} companies)</h3>
-        <button class="modal-close" id="close-modal">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-table-container">
-          <table class="modal-table">
-            <thead>
-              <tr>
-                ${headers.map(header => `<th>${header.text}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${dataRows.map(row => `
-                <tr>
-                  ${row.map(cell => {
-                    if (Object.keys(cell.links).length > 0) {
-                      // If cell has links, create clickable links
-                      const links = Object.entries(cell.links).map(([type, url]) => 
-                        `<a href="${url}" target="_blank" title="${type}">${cell.text}</a>`
-                      ).join(' ');
-                      return `<td>${links}</td>`;
-                    } else {
-                      return `<td>${cell.text}</td>`;
-                    }
-                  }).join('')}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modal);
-  
-  // Add event listeners
-  const closeBtn = document.getElementById('close-modal');
-  closeBtn.addEventListener('click', closeModal);
-  
-  // Close on background click
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeModal();
-    }
-  });
-  
-  // Close on escape key
-  const escapeHandler = (e) => {
-    if (e.key === 'Escape') {
-      closeModal();
-      document.removeEventListener('keydown', escapeHandler);
-    }
-  };
-  document.addEventListener('keydown', escapeHandler);
-}
-
-function closeModal() {
-  const modal = document.getElementById('data-modal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-function showNotification(message, type = 'info') {
+export function showNotification(message, type = 'info') {
   // Create a temporary notification
   const notification = document.createElement('div');
+  
+  let backgroundColor;
+  switch (type) {
+    case 'success':
+      backgroundColor = '#28a745';
+      break;
+    case 'error':
+      backgroundColor = '#dc3545';
+      break;
+    case 'warning':
+      backgroundColor = '#ffc107';
+      break;
+    default:
+      backgroundColor = '#333';
+  }
+  
   notification.style.cssText = `
     position: fixed;
     top: 20px;
     right: 20px;
-    background: ${type === 'success' ? '#28a745' : '#333'};
-    color: white;
+    background: ${backgroundColor};
+    color: ${type === 'warning' ? '#212529' : 'white'};
     padding: 12px 16px;
     border-radius: 8px;
     font-size: 14px;
     z-index: 10001;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     transition: all 0.3s ease;
+    font-weight: 500;
   `;
   notification.textContent = message;
   
@@ -508,30 +490,10 @@ function showNotification(message, type = 'info') {
     setTimeout(() => {
       document.body.removeChild(notification);
     }, 300);
-  }, 2000);
+  }, type === 'error' ? 4000 : 2000); // Show errors longer
 }
 
-// Listen for messages (no popup needed)
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'checkPage') {
-    sendResponse({isTargetPage: isTargetPage()});
-  }
-});
-
-// Add hot reload support
-if (chrome.runtime && chrome.runtime.onConnect) {
-  chrome.runtime.onConnect.addListener(function(port) {
-    if (port.name === 'devtools') {
-      port.onMessage.addListener(function(message) {
-        if (message === 'reload') {
-          location.reload();
-        }
-      });
-    }
-  });
-}
-
-function toggleKeepOpen() {
+export function toggleKeepOpen() {
   sidebarKeepOpen = !sidebarKeepOpen;
   const toggleBtn = document.getElementById('toggle-keep-open');
   
@@ -547,7 +509,7 @@ function toggleKeepOpen() {
 }
 
 // Load keep open preference
-function loadKeepOpenPreference() {
+export function loadKeepOpenPreference() {
   const saved = localStorage.getItem('latka-sidebar-keep-open');
   sidebarKeepOpen = saved === 'true';
   
@@ -558,14 +520,64 @@ function loadKeepOpenPreference() {
   }
 }
 
-// Auto-activate on target page
-if (isTargetPage()) {
-  // Set extension badge to indicate it's active
-  chrome.runtime.sendMessage({action: 'updateBadge', text: '●'});
+function flattenToValues(data) {
+  // Convert scraped data to 2D array of text values for Google Sheets
+  if (data.length === 0) return [];
   
-  // Auto-show sidebar immediately
-  setTimeout(() => {
-    showSidebar();
-    loadKeepOpenPreference();
-  }, 500);
+  // Get column headers from the first row
+  const headers = Object.keys(data[0]);
+  
+  // Create the result array starting with headers
+  const result = [headers];
+  
+  // Add data rows
+  data.forEach(row => {
+    const rowValues = headers.map(header => row[header] || '');
+    result.push(rowValues);
+  });
+  
+  return result;
+}
+
+async function exportViaAppsScript(values, scriptUrl, { clear = false } = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({
+      action: 'exportToGoogleSheets',
+      data: values,
+      scriptUrl: scriptUrl,
+      options: { clear }
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+
+      if (response.success) {
+        resolve(response.result);
+      } else {
+        reject(new Error(response.error));
+      }
+    });
+  });
+}
+
+// Getters for data access from other modules
+export function getScrapedTableData() {
+  return scrapedTableData;
+}
+
+export function setScrapedTableData(data) {
+  scrapedTableData = data;
+}
+
+export function getHasScrapedData() {
+  return hasScrapedData;
+}
+
+export function getSidebarVisible() {
+  return sidebarVisible;
+}
+
+export function getSidebarKeepOpen() {
+  return sidebarKeepOpen;
 }
