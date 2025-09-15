@@ -60,8 +60,8 @@ export function createSidebar() {
         <div class="page-config">
           <label for="page-count-input" class="page-label">Pages to scrape:</label>
           <div class="page-input-group">
-            <input type="number" id="page-count-input" class="page-input" min="1" max="50" value="1" placeholder="1">
-            <span class="page-info">Enter number of pages (1-50)</span>
+            <input type="number" id="page-count-input" class="page-input" min="1" max="7" value="1" placeholder="1">
+            <span class="page-info">Enter number of pages (1-7)</span>
           </div>
         </div>
         <div class="actions-grid" id="actions-grid">
@@ -306,8 +306,8 @@ export async function startScraping() {
   const pageCountInput = document.getElementById('page-count-input');
   const pagesToScrape = parseInt(pageCountInput.value) || 1;
 
-  if (pagesToScrape < 1 || pagesToScrape > 50) {
-    showNotification('Please enter a valid number of pages (1-50)', 'warning');
+  if (pagesToScrape < 1 || pagesToScrape > 7) {
+    showNotification('Please enter a valid number of pages (1-7)', 'warning');
     return;
   }
 
