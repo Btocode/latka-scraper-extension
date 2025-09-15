@@ -61,7 +61,8 @@ export function createSidebar() {
           <label for="page-count-input" class="page-label">Pages to scrape:</label>
           <div class="page-input-group">
             <input type="number" id="page-count-input" class="page-input" min="1" max="7" value="1" placeholder="1">
-            <span class="page-info">Enter number of pages (1-7)</span>
+            <span class="page-info">Enter number of pages (1-7)<br>
+            <small>Example: If 4 pages selected, scrapes current page + next 3 pages</small></span>
           </div>
         </div>
         <div class="actions-grid" id="actions-grid">
