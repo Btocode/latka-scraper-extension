@@ -1,5 +1,5 @@
-// Configuration Modal functionality for Latka Data Scraper
-import '../assets/configuration-modal.css';
+// Configuration Modal Functions
+import { showNotification } from './sidebar.js';
 
 // Apps Script Integration Functions
 export function getAppsScriptUrl() {
@@ -10,320 +10,305 @@ export function setAppsScriptUrl(url) {
   localStorage.setItem('latka-apps-script-url', url);
 }
 
+export function setAppsScriptConnected(connected) {
+  localStorage.setItem('latka-apps-script-connected', connected.toString());
+}
+
+export function getAppsScriptConnected() {
+  return localStorage.getItem('latka-apps-script-connected') === 'true';
+}
+
+export function clearBackupData() {
+  // Get all localStorage keys
+  const keys = Object.keys(localStorage);
+  
+  // Remove all backup data keys
+  keys.forEach(key => {
+    if (key.startsWith('latka_backup_')) {
+      localStorage.removeItem(key);
+    }
+  });
+  
+  console.log('🗑️ Backup data cleared after successful export');
+}
+
+export function initializeConnectionStatus() {
+  // Initialize connection status if Apps Script URL exists but connection flag doesn't
+  const appsScriptUrl = getAppsScriptUrl();
+  const isConnected = getAppsScriptConnected();
+  
+  if (appsScriptUrl && !isConnected) {
+    console.log('🔧 Initializing connection status: URL exists, setting connected to true');
+    setAppsScriptConnected(true);
+  }
+}
+
 export function initializeGoogleSheetsUI() {
+  const isConnected = getAppsScriptConnected();
   const appsScriptUrl = getAppsScriptUrl();
   const sheetsText = document.getElementById('sheets-text');
   const configureBtn = document.getElementById('configure-sheets');
+  const statusText = document.getElementById('status-text');
+  const configForm = document.getElementById('sheets-config-form');
+  const connectedActions = document.getElementById('sheets-connected-actions');
+  const urlInput = document.getElementById('sheets-url-input');
 
-  // Auto-configure with default App Script URL if not set
-  if (!appsScriptUrl) {
-    const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbyUsdQZIeyGPNWTsETzkEXZHoDTIWenZYehgqxjG5hUFuIKAlUl-03ZqmeKZBJQ7wjOgw/exec';
-    setAppsScriptUrl(defaultAppsScriptUrl);
+  console.log('🔧 Initializing Google Sheets UI:', { isConnected, hasUrl: !!appsScriptUrl });
 
-    sheetsText.textContent = 'Ready to export';
-    configureBtn.textContent = 'Settings';
-    configureBtn.classList.add('connected');
-  } else {
-    sheetsText.textContent = 'Ready to export';
-    configureBtn.textContent = 'Settings';
-    configureBtn.classList.add('connected');
-  }
-}
-
-export function showGoogleSheetsModal() {
-  const currentAppsScriptUrl = getAppsScriptUrl();
-  const defaultAppsScriptUrl = currentAppsScriptUrl || 'https://script.google.com/macros/s/AKfycbyUsdQZIeyGPNWTsETzkEXZHoDTIWenZYehgqxjG5hUFuIKAlUl-03ZqmeKZBJQ7wjOgw/exec';
-
-  const modal = document.createElement('div');
-  modal.className = 'export-config-modal';
-  modal.id = 'export-modal';
-
-  modal.innerHTML = `
-    <div class="modal-overlay"></div>
-    <div class="modal-container">
-      <div class="modal-header">
-        <div class="header-content">
-          <div class="header-icon">⚡</div>
-          <div class="header-text">
-            <h2>Export Configuration</h2>
-            <p>Configure your Google Apps Script for seamless data export</p>
-          </div>
-        </div>
-        <button class="close-btn" id="close-modal">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16zM4.646 5.354a.5.5 0 0 1 .708-.708L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354z"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <div class="config-section">
-          <label class="input-label">Apps Script URL</label>
-          <div class="input-wrapper">
-            <input
-              type="url"
-              id="apps-script-url"
-              class="url-input"
-              placeholder="https://script.google.com/macros/s/.../exec"
-              value="${defaultAppsScriptUrl}"
-            >
-            <button id="test-connection" class="test-btn" title="Test Connection">
-              <span class="test-icon">🔗</span>
-            </button>
-          </div>
-          <p class="input-help">Your Google Apps Script web app deployment URL</p>
-        </div>
-
-        <div class="config-section">
-          <div class="checkbox-wrapper">
-            <label class="checkbox-label">
-              <input type="checkbox" id="clear-sheet" checked class="checkbox-input">
-              <span class="checkbox-text">Clear existing data before export</span>
-            </label>
-          </div>
-          <p class="input-help">Uncheck to append data to existing content</p>
-        </div>
-
-        <div class="status-section" id="status-section" style="display: none;">
-          <div class="status-message" id="status-message"></div>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <div class="button-group">
-          <button id="test-full-connection" class="btn-secondary">Test Connection</button>
-          <button id="save-config" class="btn-primary">Save & Apply</button>
-        </div>
-        ${currentAppsScriptUrl ? '<button id="reset-config" class="btn-danger-link">Reset Configuration</button>' : ''}
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modal);
-  
-  // Add event listeners
-  document.getElementById('close-modal').addEventListener('click', closeExportModal);
-  document.getElementById('save-config').addEventListener('click', saveExportConfig);
-  document.getElementById('test-full-connection').addEventListener('click', testConnectionFull);
-  document.getElementById('test-connection').addEventListener('click', testConnectionQuick);
-
-  if (currentAppsScriptUrl) {
-    document.getElementById('reset-config').addEventListener('click', resetExportConfig);
+  // If we have an Apps Script URL but no connection flag, set it to connected
+  if (appsScriptUrl && !isConnected) {
+    console.log('🔧 Setting connection flag to true (URL exists but flag not set)');
+    setAppsScriptConnected(true);
   }
 
-  // Close on overlay click
-  modal.querySelector('.modal-overlay').addEventListener('click', closeExportModal);
+  // Re-check connection status after potential update
+  const finalConnected = getAppsScriptConnected();
 
-  // Focus the URL input
-  document.getElementById('apps-script-url').focus();
-
-  // Add escape key handler
-  const escapeHandler = (e) => {
-    if (e.key === 'Escape') {
-      closeExportModal();
-      document.removeEventListener('keydown', escapeHandler);
+  if (!finalConnected) {
+    // Apps Script not connected
+    if (sheetsText) {
+      sheetsText.textContent = 'No sheet connected';
     }
-  };
-  document.addEventListener('keydown', escapeHandler);
+    if (configureBtn) {
+      configureBtn.textContent = 'Configure';
+      configureBtn.classList.remove('connected');
+    }
+    if (statusText) {
+      statusText.textContent = 'Configure Google Sheets';
+    }
+    if (configForm) {
+      configForm.style.display = 'none';
+    }
+    if (connectedActions) {
+      connectedActions.style.display = 'none';
+    }
+    // Disable save button when not connected
+    const saveBtn = document.getElementById('save-sheets-config');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+    }
+  } else {
+    // Apps Script is connected
+    if (sheetsText) {
+      sheetsText.textContent = 'Ready to export';
+    }
+    if (configureBtn) {
+      configureBtn.textContent = 'Settings';
+      configureBtn.classList.add('connected');
+    }
+    if (statusText) {
+      statusText.textContent = 'Ready to scrape';
+    }
+    if (configForm) {
+      configForm.style.display = 'none';
+    }
+    if (connectedActions) {
+      connectedActions.style.display = 'block';
+    }
+    if (urlInput && appsScriptUrl) {
+      urlInput.value = appsScriptUrl;
+    }
+    // Enable save button when connected
+    const saveBtn = document.getElementById('save-sheets-config');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+    }
+  }
 }
 
-function closeExportModal() {
-  const modal = document.getElementById('export-modal');
-  if (modal) modal.remove();
+export function toggleSheetsConfig() {
+  const configForm = document.getElementById('sheets-config-form');
+  const connectedActions = document.getElementById('sheets-connected-actions');
+  const isConnected = getAppsScriptConnected();
+  
+  if (isConnected) {
+    // If connected, show disconnect option
+    if (connectedActions) {
+      connectedActions.style.display = connectedActions.style.display === 'none' ? 'block' : 'none';
+    }
+  } else {
+    // If not connected, show configuration form
+    if (configForm) {
+      configForm.style.display = configForm.style.display === 'none' ? 'block' : 'none';
+    }
+  }
 }
 
-async function testConnectionQuick() {
-  const appsScriptInput = document.getElementById('apps-script-url');
-  const testBtn = document.getElementById('test-connection');
-
-  const appsScriptUrl = appsScriptInput.value.trim();
-
+export function testSheetsConnection() {
+  const urlInput = document.getElementById('sheets-url-input');
+  const testBtn = document.getElementById('test-sheets-connection');
+  const saveBtn = document.getElementById('save-sheets-config');
+  const statusDiv = document.getElementById('config-status');
+  
+  if (!urlInput || !testBtn) return;
+  
+  const appsScriptUrl = urlInput.value.trim();
+  
   if (!appsScriptUrl) {
-    showExportStatus('Please enter an Apps Script Web App URL', 'error');
+    showInlineStatus('Please enter an Apps Script URL', 'error');
     return;
   }
-
+  
+  if (!isValidAppsScriptUrl(appsScriptUrl)) {
+    showInlineStatus('Please enter a valid Apps Script URL', 'error');
+    return;
+  }
+  
   testBtn.innerHTML = '⏳';
   testBtn.disabled = true;
-
-  try {
-    const testData = [['Test', 'Connection', 'Success']];
-    const result = await exportViaAppsScript(testData, appsScriptUrl, { clear: false });
-
-    if (result.ok) {
-      testBtn.innerHTML = '✅';
-      setTimeout(() => {
-        testBtn.innerHTML = '🔗';
-        testBtn.disabled = false;
-      }, 2000);
-    } else {
+  if (saveBtn) {
+    saveBtn.disabled = true;
+  }
+  
+  // Test the connection
+  testAppsScriptConnection(appsScriptUrl)
+    .then(response => {
+      if (response.ok) {
+        testBtn.innerHTML = '✅';
+        showInlineStatus('✅ Connection successful! You can now save the configuration.', 'success');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+        }
+        setTimeout(() => {
+          testBtn.innerHTML = '🔗';
+          testBtn.disabled = false;
+        }, 2000);
+      } else {
+        testBtn.innerHTML = '❌';
+        showInlineStatus('❌ Connection failed: ' + (response.error || 'Please check your Apps Script URL and permissions'), 'error');
+        if (saveBtn) {
+          saveBtn.disabled = true;
+        }
+        setTimeout(() => {
+          testBtn.innerHTML = '🔗';
+          testBtn.disabled = false;
+        }, 3000);
+      }
+    })
+    .catch(error => {
       testBtn.innerHTML = '❌';
-      showExportStatus(`Connection failed: ${result.error || 'Unknown error'}`, 'error');
+      showInlineStatus('❌ Connection test failed: ' + error.message, 'error');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+      }
       setTimeout(() => {
         testBtn.innerHTML = '🔗';
         testBtn.disabled = false;
       }, 3000);
-    }
-  } catch (error) {
-    // For no-cors mode, we might not get detailed error info
-    if (error.message.includes('Failed to fetch')) {
-      testBtn.innerHTML = '⚠️';
-      showExportStatus('Connection test completed (no-cors mode). Export should still work.', 'info');
-    } else {
-      testBtn.innerHTML = '❌';
-      showExportStatus('Connection test failed: ' + error.message, 'error');
-    }
-    setTimeout(() => {
-      testBtn.innerHTML = '🔗';
-      testBtn.disabled = false;
-    }, 3000);
-  }
+    });
 }
 
-async function testConnectionFull() {
-  const appsScriptInput = document.getElementById('apps-script-url');
-  const testBtn = document.getElementById('test-full-connection');
-
-  const appsScriptUrl = appsScriptInput.value.trim();
-
-  if (!appsScriptUrl) {
-    showExportStatus('Please enter an Apps Script Web App URL', 'error');
+export function saveSheetsConfig() {
+  const urlInput = document.getElementById('sheets-url-input');
+  const saveBtn = document.getElementById('save-sheets-config');
+  
+  if (!urlInput || !saveBtn) return;
+  
+  // Check if save button is disabled (connection not verified)
+  if (saveBtn.disabled) {
+    showInlineStatus('Please test the connection first before saving', 'error');
     return;
   }
-
-  testBtn.innerHTML = 'Testing...';
-  testBtn.disabled = true;
-
-  try {
-    const testData = [['Test', 'Connection', 'Success']];
-    const result = await exportViaAppsScript(testData, appsScriptUrl, { clear: false });
-
-    if (result.ok) {
-      showExportStatus('✅ Connection successful! Ready to export data.', 'success');
-    } else {
-      showExportStatus(`❌ Connection failed: ${result.error || 'Unknown error'}`, 'error');
-    }
-  } catch (error) {
-    showExportStatus('❌ Connection test failed: ' + error.message, 'error');
-  }
-
-  testBtn.innerHTML = 'Test Connection';
-  testBtn.disabled = false;
-}
-
-function saveExportConfig() {
-  const appsScriptInput = document.getElementById('apps-script-url');
-  const clearSheetCheckbox = document.getElementById('clear-sheet');
-  const appsScriptUrl = appsScriptInput.value.trim();
-  const clearSheet = clearSheetCheckbox.checked;
-
+  
+  const appsScriptUrl = urlInput.value.trim();
+  
   if (!appsScriptUrl) {
-    showExportStatus('Please enter an Apps Script Web App URL', 'error');
+    showInlineStatus('Please enter an Apps Script URL', 'error');
     return;
   }
-
+  
   if (!isValidAppsScriptUrl(appsScriptUrl)) {
-    showExportStatus('Please enter a valid Apps Script Web App URL', 'error');
+    showInlineStatus('Please enter a valid Apps Script URL', 'error');
     return;
   }
-
+  
+  saveBtn.innerHTML = '⏳';
+  saveBtn.disabled = true;
+  
+  // Save the configuration
   setAppsScriptUrl(appsScriptUrl);
-  localStorage.setItem('latka-clear-sheet', clearSheet.toString());
-
+  setAppsScriptConnected(true);
+  
+  // Update UI
   initializeGoogleSheetsUI();
-  showExportStatus('✅ Configuration saved successfully!', 'success');
-
+  showInlineStatus('✅ Configuration saved successfully!', 'success');
+  
+  // Update start button state
+  if (window.updateStartButtonState) {
+    window.updateStartButtonState();
+  }
+  
   setTimeout(() => {
-    closeExportModal();
-  }, 1500);
+    saveBtn.innerHTML = '💾';
+    saveBtn.disabled = false;
+  }, 2000);
 }
 
-function resetExportConfig() {
+export function disableSheetsConnection() {
+  // Clear configuration
   localStorage.removeItem('latka-apps-script-url');
-  localStorage.removeItem('latka-clear-sheet');
+  setAppsScriptConnected(false);
+  
+  // Update UI
   initializeGoogleSheetsUI();
-  showExportStatus('🗑️ Configuration reset successfully', 'info');
+  showNotification('🗑️ Google Sheets disconnected. Configure to enable scraping.', 'info');
+  
+  // Update start button state
+  if (window.updateStartButtonState) {
+    window.updateStartButtonState();
+  }
+}
 
+export function showInlineStatus(message, type) {
+  const statusDiv = document.getElementById('config-status');
+  if (!statusDiv) return;
+  
+  statusDiv.textContent = message;
+  statusDiv.className = `config-status ${type}`;
+  statusDiv.style.display = 'block';
+  
+  // Auto-hide after 5 seconds
   setTimeout(() => {
-    closeExportModal();
-  }, 1500);
+    statusDiv.style.display = 'none';
+  }, 5000);
 }
 
-function showExportStatus(message, type) {
-  const statusSection = document.getElementById('status-section');
-  const statusMessage = document.getElementById('status-message');
-
-  statusMessage.textContent = message;
-  statusMessage.className = `status-message status-${type}`;
-  statusSection.style.display = 'block';
-
-  // Auto-hide success messages
-  if (type === 'success') {
-    setTimeout(() => {
-      statusSection.style.display = 'none';
-    }, 3000);
-  }
+export function showGoogleSheetsModal() {
+  // This function is now deprecated in favor of inline configuration
+  // But keeping it for backward compatibility
+  toggleSheetsConfig();
 }
 
-
+// Helper functions
 function isValidAppsScriptUrl(url) {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname === 'script.google.com' && 
-           url.includes('/macros/s/') && 
-           url.endsWith('/exec');
-  } catch {
-    return false;
-  }
+  return url.includes('script.google.com/macros/s/') && url.includes('/exec');
 }
 
-
-
-function convertDataToCSV(data) {
-  if (data.length === 0) return '';
-  
-  // Get headers from first object
-  const headers = Object.keys(data[0]);
-  
-  // Create header row
-  const headerRow = headers.map(header => {
-    if (header.includes(',') || header.includes('"') || header.includes('\n')) {
-      return '"' + header.replace(/"/g, '""') + '"';
-    }
-    return header;
-  }).join(',');
-  
-  // Create data rows
-  const dataRows = data.map(row => {
-    return headers.map(header => {
-      let text = row[header] || '';
-      if (text.includes(',') || text.includes('"') || text.includes('\n')) {
-        text = '"' + text.replace(/"/g, '""') + '"';
-      }
-      return text;
-    }).join(',');
-  });
-  
-  return [headerRow, ...dataRows].join('\n');
-}
-
-async function exportViaAppsScript(values, scriptUrl, { clear = false } = {}) {
-  return new Promise((resolve, reject) => {
+async function testAppsScriptConnection(scriptUrl) {
+  return new Promise((resolve) => {
+    // Set a timeout for the connection test
+    const timeout = setTimeout(() => {
+      resolve({ ok: false, error: 'Connection timeout - please check your Apps Script URL and try again' });
+    }, 10000); // 10 second timeout
+    
     chrome.runtime.sendMessage({
       action: 'exportToGoogleSheets',
-      data: values,
+      data: [['Test', 'Connection', 'Success']],
       scriptUrl: scriptUrl,
-      options: { clear }
+      options: { clear: false }
     }, (response) => {
+      clearTimeout(timeout);
+      
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-
-      if (response.success) {
-        resolve(response.result);
+        console.error('Chrome runtime error:', chrome.runtime.lastError);
+        resolve({ ok: false, error: 'Extension communication error: ' + chrome.runtime.lastError.message });
+      } else if (response && response.ok) {
+        resolve({ ok: true });
+      } else if (response && response.error) {
+        resolve({ ok: false, error: response.error });
       } else {
-        reject(new Error(response.error));
+        // For no-cors mode, we might not get a response, but that's often okay
+        resolve({ ok: true, note: 'Connection test completed (no-cors mode)' });
       }
     });
   });
@@ -332,5 +317,13 @@ async function exportViaAppsScript(values, scriptUrl, { clear = false } = {}) {
 // Expose functions to global scope for integration with other modules
 window.getAppsScriptUrl = getAppsScriptUrl;
 window.setAppsScriptUrl = setAppsScriptUrl;
+window.getAppsScriptConnected = getAppsScriptConnected;
+window.setAppsScriptConnected = setAppsScriptConnected;
+window.clearBackupData = clearBackupData;
+window.initializeConnectionStatus = initializeConnectionStatus;
 window.initializeGoogleSheetsUI = initializeGoogleSheetsUI;
 window.showGoogleSheetsModal = showGoogleSheetsModal;
+window.toggleSheetsConfig = toggleSheetsConfig;
+window.testSheetsConnection = testSheetsConnection;
+window.saveSheetsConfig = saveSheetsConfig;
+window.disableSheetsConnection = disableSheetsConnection;

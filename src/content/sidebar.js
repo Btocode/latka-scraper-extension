@@ -48,10 +48,60 @@ export function createSidebar() {
         <div class="section-title">Status</div>
         <div class="status-indicator">
           <span class="status-dot active"></span>
-          <span class="status-text">Ready to scrape</span>
+          <span class="status-text" id="status-text">Configure Google Sheets</span>
         </div>
         <div class="progress-bar">
           <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+      
+      <div class="sheets-section" id="sheets-section">
+        <div class="section-title">Google Sheets</div>
+        <div class="sheets-config">
+          <div class="sheets-status" id="sheets-status">
+            <span class="sheets-indicator">📊</span>
+            <span class="sheets-text" id="sheets-text">No sheet connected</span>
+            <button id="configure-sheets" class="configure-btn">Configure</button>
+          </div>
+          
+          <div class="sheets-config-form" id="sheets-config-form" style="display: none;">
+            <div class="config-input-group">
+              <input 
+                type="url" 
+                id="sheets-url-input" 
+                class="sheets-url-input" 
+                placeholder="https://script.google.com/macros/s/.../exec"
+              >
+              <div class="config-buttons">
+                <button id="test-sheets-connection" class="config-btn test-btn" title="Test Connection">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  </svg>
+                </button>
+                <button id="save-sheets-config" class="config-btn save-btn" title="Save Configuration">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17,21 17,13 7,13 7,21"/>
+                    <polyline points="7,3 7,8 15,8"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="config-status" id="config-status" style="display: none;"></div>
+          </div>
+          
+          <div class="sheets-connected-actions" id="sheets-connected-actions" style="display: none;">
+            <button id="disable-sheets" class="disable-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              Disconnect
+            </button>
+          </div>
+          
         </div>
       </div>
       
@@ -94,32 +144,6 @@ export function createSidebar() {
         </div>
       </div>
       
-      <div class="sheets-section" id="sheets-section" style="display: none;">
-        <div class="section-title">Google Sheets</div>
-        <div class="sheets-config">
-          <div class="sheets-status" id="sheets-status">
-            <span class="sheets-indicator">📊</span>
-            <span class="sheets-text" id="sheets-text">No sheet connected</span>
-            <button id="configure-sheets" class="configure-btn">Configure</button>
-          </div>
-          <div class="export-options" id="export-options" style="display: none; margin-top: var(--space-4);">
-            <div class="option-row">
-              <label class="option-label">
-                <input type="checkbox" id="export-per-page" class="option-checkbox">
-                <span class="checkmark"></span>
-                Export after each page
-              </label>
-            </div>
-            <div class="option-row" style="margin-top: var(--space-3);">
-              <label class="option-label">
-                <input type="checkbox" id="auto-export-end" class="option-checkbox">
-                <span class="checkmark"></span>
-                Auto-export at completion (multi-page only)
-              </label>
-            </div>
-          </div>
-        </div>
-      </div>
       
       <div class="data-section" id="data-section" style="display: none;">
         <div class="section-title">
@@ -135,6 +159,16 @@ export function createSidebar() {
 
   document.body.appendChild(sidebar);
   sidebarElement = sidebar;
+
+  // Initialize connection status when sidebar is created
+  if (window.initializeConnectionStatus) {
+    window.initializeConnectionStatus();
+  }
+  
+  // Update start button state based on connection status
+  setTimeout(() => {
+    updateStartButtonState();
+  }, 100);
 
   return sidebar;
 }
@@ -304,6 +338,13 @@ function scrapeLatkaTable() {
 }
 
 export async function startScraping() {
+  // Check if Google Sheets is connected before allowing scraping
+  const isConnected = window.getAppsScriptConnected ? window.getAppsScriptConnected() : false;
+  if (!isConnected) {
+    showNotification('⚠️ Please configure Google Sheets connection before scraping data.', 'warning');
+    return;
+  }
+
   const pageCountInput = document.getElementById('page-count-input');
   const pagesToScrape = parseInt(pageCountInput.value) || 1;
 
@@ -371,10 +412,8 @@ async function scrapeCurrentPage() {
       allPagesData = [...allPagesData, ...pageData];
       console.log(`Page ${currentPageNum}: Found ${pageData.length} companies. Total so far: ${allPagesData.length}`);
 
-      // Export data after each page if configured
-      if (shouldExportAfterEachPage()) {
-        await exportPageData(pageData, currentPageNum);
-      }
+      // Export data after each page
+      await exportPageData(pageData, currentPageNum);
 
       // Update display with accumulated data
       updateDataDisplay();
@@ -499,13 +538,7 @@ async function completeMultiPageScraping() {
     updateScrapingStatus('Completed');
     updateActionButtons(true);
 
-    // Final export only if auto-export is enabled AND not exporting after each page
-    if (!shouldExportAfterEachPage()) {
-      // Check if we should auto-export at the end
-      if (shouldAutoExport()) {
-        exportAllData();
-      }
-    }
+    // Data is already exported after each page, no need for final export
 
     showNotification(`🎉 Multi-page scraping complete! Collected ${allPagesData.length} companies from ${currentPageIndex} pages`, 'success');
   } else {
@@ -539,106 +572,46 @@ export function showDataSections() {
   document.getElementById('stats-section').style.display = 'block';
   document.getElementById('sheets-section').style.display = 'block';
 
+  // Initialize connection status first
+  if (window.initializeConnectionStatus) {
+    window.initializeConnectionStatus();
+  }
+
   // Initialize Google Sheets UI (will be handled by configuration modal module)
   if (window.initializeGoogleSheetsUI) {
     window.initializeGoogleSheetsUI();
   }
 
-  // Initialize export options
-  initializeExportOptions();
 }
 
-function initializeExportOptions() {
-  // Show export options if Google Sheets is configured
-  const appsScriptUrl = window.getAppsScriptUrl ? window.getAppsScriptUrl() : null;
-  const exportOptions = document.getElementById('export-options');
-
-  if (appsScriptUrl && exportOptions) {
-    exportOptions.style.display = 'block';
-
-    // Set up event listener for export per page checkbox
-    const exportPerPageCheckbox = document.getElementById('export-per-page');
-    if (exportPerPageCheckbox && !exportPerPageCheckbox.hasAttribute('data-listener')) {
-      // Load saved preference
-      exportPerPageCheckbox.checked = localStorage.getItem('latka-export-per-page') === 'true';
-
-      // Add change listener
-      exportPerPageCheckbox.addEventListener('change', (e) => {
-        localStorage.setItem('latka-export-per-page', e.target.checked);
-        showNotification(
-          e.target.checked ?
-          '✅ Will export data after each page' :
-          '📋 Will wait for manual export or end completion',
-          'info'
-        );
-      });
-
-      exportPerPageCheckbox.setAttribute('data-listener', 'true');
-    }
-
-    // Set up event listener for auto-export at end checkbox
-    const autoExportEndCheckbox = document.getElementById('auto-export-end');
-    if (autoExportEndCheckbox && !autoExportEndCheckbox.hasAttribute('data-listener')) {
-      // Load saved preference
-      autoExportEndCheckbox.checked = localStorage.getItem('latka-auto-export') === 'true';
-
-      // Add change listener
-      autoExportEndCheckbox.addEventListener('change', (e) => {
-        localStorage.setItem('latka-auto-export', e.target.checked);
-        showNotification(
-          e.target.checked ?
-          '✅ Will auto-export when all pages complete' :
-          '📋 Will show export button when complete',
-          'info'
-        );
-      });
-
-      autoExportEndCheckbox.setAttribute('data-listener', 'true');
-    }
-  }
-}
 
 function updateActionButtons(hasData) {
-  const actionsGrid = document.getElementById('actions-grid');
   const startBtn = document.getElementById('start-scraping');
 
   if (hasData) {
     // Update start button to rescrape
     startBtn.innerHTML = '<span class="icon">🔄</span>Rescrape';
-
-    // Only show export button if:
-    // 1. Single page scraping (totalPagesToScrape === 1), OR
-    // 2. Multi-page scraping is complete AND auto-export is OFF
-    const shouldShowExportButton = totalPagesToScrape === 1 || (!isMultiPageScraping && !shouldExportAfterEachPage());
-
-    if (shouldShowExportButton) {
-      // Add export button if it doesn't exist
-      let exportBtn = document.getElementById('export-data');
-      if (!exportBtn) {
-        exportBtn = document.createElement('button');
-        exportBtn.id = 'export-data';
-        exportBtn.className = 'btn btn-secondary';
-        exportBtn.innerHTML = '<span class="icon">📤</span>Export';
-        exportBtn.addEventListener('click', exportData);
-        actionsGrid.appendChild(exportBtn);
-      }
-      exportBtn.disabled = false;
-    } else {
-      // Remove export button if auto-export is enabled for multi-page
-      const exportBtn = document.getElementById('export-data');
-      if (exportBtn) {
-        exportBtn.remove();
-      }
-    }
   } else {
     // Reset to start scraping
     startBtn.innerHTML = '<span class="icon">⚡</span>Start Scraping';
+  }
+  
+  // Update button state based on Google Sheets connection
+  updateStartButtonState();
+}
 
-    // Remove export button if it exists
-    const exportBtn = document.getElementById('export-data');
-    if (exportBtn) {
-      exportBtn.remove();
-    }
+function updateStartButtonState() {
+  const startBtn = document.getElementById('start-scraping');
+  if (!startBtn) return;
+  
+  const isConnected = window.getAppsScriptConnected ? window.getAppsScriptConnected() : false;
+  
+  if (isConnected) {
+    startBtn.disabled = false;
+    startBtn.classList.remove('disabled');
+  } else {
+    startBtn.disabled = true;
+    startBtn.classList.add('disabled');
   }
 }
 
@@ -710,12 +683,17 @@ async function exportData() {
   
   try {
     const values = flattenToValues(dataToExport);
-    const clearSheet = localStorage.getItem('latka-clear-sheet') === 'true';
+    const clearSheet = false; // Always append data, never clear sheet
 
     await exportViaAppsScript(values, appsScriptUrl, { clear: clearSheet });
 
     exportBtn.innerHTML = '<span class="icon success-icon">✓</span>Exported!';
     exportBtn.classList.add('success');
+
+    // Clear backup data after successful export
+    if (window.clearBackupData) {
+      window.clearBackupData();
+    }
 
     // Show success notification
     const companyCount = values.length - 1; // Subtract header row
@@ -918,15 +896,6 @@ function updateDataDisplay() {
   console.log(`Updated display: ${totalCount} companies total`);
 }
 
-function shouldExportAfterEachPage() {
-  // Check if user wants to export after each page (stored in localStorage)
-  return localStorage.getItem('latka-export-per-page') === 'true';
-}
-
-function shouldAutoExport() {
-  // Check if user wants to auto-export at the end
-  return localStorage.getItem('latka-auto-export') === 'true';
-}
 
 async function exportPageData(pageData, pageNumber) {
   const appsScriptUrl = window.getAppsScriptUrl ? window.getAppsScriptUrl() : null;
@@ -938,9 +907,15 @@ async function exportPageData(pageData, pageNumber) {
 
   try {
     const values = flattenToValues(pageData);
-    const clearSheet = pageNumber === 1; // Only clear on first page
+    const clearSheet = false; // Always append data, never clear sheet
 
     await exportViaAppsScript(values, appsScriptUrl, { clear: clearSheet });
+    
+    // Clear backup data after successful export
+    if (window.clearBackupData) {
+      window.clearBackupData();
+    }
+    
     showNotification(`📤 Page ${pageNumber} exported successfully`, 'success');
   } catch (error) {
     showNotification(`❌ Failed to export page ${pageNumber}`, 'error');
@@ -1142,15 +1117,13 @@ export function receivePageData(pageData, pageNumber) {
       allPagesData = [...allPagesData, ...pageData];
       console.log(`Page ${pageNumber}: Added ${pageData.length} companies. Total accumulated: ${allPagesData.length}`);
 
-      // Export data after each page if configured
-      if (shouldExportAfterEachPage()) {
-        exportPageData(pageData, pageNumber).then(() => {
-          console.log(`✅ Page ${pageNumber} exported successfully`);
-        }).catch(error => {
-          console.error(`❌ Failed to export page ${pageNumber}:`, error);
-          showNotification(`❌ Failed to export page ${pageNumber}`, 'error');
-        });
-      }
+      // Export data after each page
+      exportPageData(pageData, pageNumber).then(() => {
+        console.log(`✅ Page ${pageNumber} exported successfully`);
+      }).catch(error => {
+        console.error(`❌ Failed to export page ${pageNumber}:`, error);
+        showNotification(`❌ Failed to export page ${pageNumber}`, 'error');
+      });
 
       // Update display
       updateDataDisplay();
@@ -1253,3 +1226,6 @@ async function cancelMultiPageScraping() {
     showNotification('❌ Error cancelling scraping', 'error');
   }
 }
+
+// Expose functions to global scope for integration with other modules
+window.updateStartButtonState = updateStartButtonState;

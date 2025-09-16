@@ -51,7 +51,38 @@ function initializeSidebar() {
   document.getElementById('close-sidebar').addEventListener('click', hideSidebar);
   document.getElementById('toggle-keep-open').addEventListener('click', toggleKeepOpen);
   document.getElementById('start-scraping').addEventListener('click', startScraping);
-  document.getElementById('configure-sheets').addEventListener('click', showGoogleSheetsModal);
+  document.getElementById('configure-sheets').addEventListener('click', () => {
+    if (window.toggleSheetsConfig) {
+      window.toggleSheetsConfig();
+    }
+  });
+  
+  // Add event listeners for inline configuration
+  document.getElementById('test-sheets-connection').addEventListener('click', () => {
+    if (window.testSheetsConnection) {
+      window.testSheetsConnection();
+    }
+  });
+  
+  document.getElementById('save-sheets-config').addEventListener('click', () => {
+    if (window.saveSheetsConfig) {
+      window.saveSheetsConfig();
+    }
+  });
+  
+  document.getElementById('disable-sheets').addEventListener('click', () => {
+    if (window.disableSheetsConnection) {
+      window.disableSheetsConnection();
+    }
+  });
+  
+  // Add event listener for URL input changes to disable save button
+  document.getElementById('sheets-url-input').addEventListener('input', () => {
+    const saveBtn = document.getElementById('save-sheets-config');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+    }
+  });
   
   // Add event listener for view all data link (using observer pattern since element may not exist yet)
   const observer = new MutationObserver((mutations) => {
