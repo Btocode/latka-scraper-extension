@@ -110,8 +110,8 @@ export function createSidebar() {
         <div class="page-config">
           <label for="page-count-input" class="page-label">Pages to scrape:</label>
           <div class="page-input-group">
-            <input type="number" id="page-count-input" class="page-input" min="1" max="7" value="1" placeholder="1">
-            <span class="page-info">Enter number of pages (1-7)<br>
+            <input type="number" id="page-count-input" class="page-input" min="1" max="10" value="1" placeholder="1">
+            <span class="page-info">Enter number of pages (1-10)<br>
             <small>Example: If 4 pages selected, scrapes current page + next 3 pages</small></span>
           </div>
         </div>
@@ -160,14 +160,11 @@ export function createSidebar() {
   document.body.appendChild(sidebar);
   sidebarElement = sidebar;
 
-  // Initialize connection status when sidebar is created
-  if (window.initializeConnectionStatus) {
-    window.initializeConnectionStatus();
-  }
-  
-  // Update start button state based on connection status
+  // Initialize Google Sheets UI after DOM is ready
   setTimeout(() => {
-    updateStartButtonState();
+    if (window.initializeGoogleSheetsUI) {
+      window.initializeGoogleSheetsUI();
+    }
   }, 100);
 
   return sidebar;
@@ -250,16 +247,18 @@ function extractCellData(cell) {
   return cellData;
 }
 
+
 function scrapeLatkaTable() {
   const tables = Array.from(document.querySelectorAll('table'));
   const requestedColumns = [
     'Name',
-    'company_links', // Column for comma-separated company links
+    'Website', // Company website URL
+    'LinkedIn', // Company LinkedIn URL
     'Funding',
     'Valuation',
     'Growth',
     'Founder',
-    'founder_links', // Column for comma-separated founder links
+    'Founder LinkedIn', // Founder LinkedIn profile only
     'Team Size',
     'Founded',
     'Location',
@@ -292,9 +291,9 @@ function scrapeLatkaTable() {
           let cell = null;
 
           // Determine which table cell to look in based on the requested column
-          if (reqCol === 'Name' || reqCol === 'company_links') {
+          if (reqCol === 'Name' || reqCol === 'Website' || reqCol === 'LinkedIn') {
               cellIndex = headers.indexOf('Name');
-          } else if (reqCol === 'Founder' || reqCol === 'founder_links') {
+          } else if (reqCol === 'Founder' || reqCol === 'Founder LinkedIn') {
                cellIndex = headers.indexOf('Founder');
           } else {
                cellIndex = headers.indexOf(reqCol);
@@ -303,18 +302,57 @@ function scrapeLatkaTable() {
           if (cellIndex > -1 && cellIndex < cells.length) {
                cell = cells[cellIndex];
 
-               if (reqCol === 'company_links') {
-                  // Collect all link hrefs from the Name cell and join with comma
-                  const links = Array.from(cell.querySelectorAll('a'));
-                  rowData[reqCol] = links.map(link => link.href).join(',');
+               if (reqCol === 'Website') {
+                  // Look for website URL in anchor tags with aria-label="website url"
+                  const websiteLinks = [];
+                  const websiteLink = cell.querySelector('a[aria-label="website url"]');
+                  if (websiteLink && websiteLink.href) {
+                    websiteLinks.push(websiteLink.href);
+                  }
+                  rowData[reqCol] = websiteLinks.join(',');
+                  
+               } else if (reqCol === 'LinkedIn') {
+                  // Look for Company LinkedIn with aria-label="Company linkedIn"
+                  const linkedinLinks = [];
+                  const linkedinLink = cell.querySelector('a[aria-label="Company linkedIn"]');
+                  if (linkedinLink && linkedinLink.href) {
+                    linkedinLinks.push(linkedinLink.href);
+                  }
+                  rowData[reqCol] = linkedinLinks.join(',');
 
-               } else if (reqCol === 'founder_links') {
-                   // Collect all link hrefs from the Founder cell and join with comma
+               } else if (reqCol === 'Founder LinkedIn') {
+                   // Collect LinkedIn links from both <a> elements and <button> onclick handlers
+                  const linkedinLinks = [];
+                  
+                  // Check for <a> elements with LinkedIn URLs
                   const links = Array.from(cell.querySelectorAll('a'));
-                  rowData[reqCol] = links.map(link => link.href).join(',');
+                  links.forEach(link => {
+                    if (link.href && link.href.includes('linkedin.com')) {
+                      linkedinLinks.push(link.href);
+                    }
+                  });
+                  
+                  // Check for <button> elements with LinkedIn URLs in onclick handlers
+                  const buttons = Array.from(cell.querySelectorAll('button[onclick]'));
+                  buttons.forEach(button => {
+                    const onclick = button.getAttribute('onclick');
+                    if (onclick) {
+                      // Extract LinkedIn URL from onclick handler like: window.open('https://www.linkedin.com/in/...')
+                      const linkedinMatch = onclick.match(/linkedin\.com\/[^'"\)]+/gi);
+                      if (linkedinMatch) {
+                        linkedinMatch.forEach(match => {
+                          const fullUrl = match.startsWith('http') ? match : 'https://www.' + match;
+                          linkedinLinks.push(fullUrl);
+                        });
+                      }
+                    }
+                  });
+                  
+                  // Remove duplicates and join
+                  const uniqueLinkedinLinks = [...new Set(linkedinLinks)];
+                  rowData[reqCol] = uniqueLinkedinLinks.join(',');
 
-               }
-              else {
+               } else {
                 // For regular columns, just get the text content
                 rowData[reqCol] = cell.innerText.trim();
               }
@@ -348,8 +386,8 @@ export async function startScraping() {
   const pageCountInput = document.getElementById('page-count-input');
   const pagesToScrape = parseInt(pageCountInput.value) || 1;
 
-  if (pagesToScrape < 1 || pagesToScrape > 7) {
-    showNotification('Please enter a valid number of pages (1-7)', 'warning');
+  if (pagesToScrape < 1 || pagesToScrape > 10) {
+    showNotification('Please enter a valid number of pages (1-10)', 'warning');
     return;
   }
 
@@ -500,6 +538,10 @@ async function getCurrentTabId() {
       throw new Error('Failed to get current tab ID');
     }
   } catch (error) {
+    if (error.message.includes('Extension context invalidated')) {
+      console.warn('Extension context invalidated - cannot get tab ID');
+      return null; // Return null instead of throwing
+    }
     console.error('Error getting current tab ID:', error);
     throw error;
   }
@@ -518,12 +560,18 @@ async function completeMultiPageScraping() {
   // Clean up tab group
   try {
     const currentTabId = await getCurrentTabId();
-    await chrome.runtime.sendMessage({
-      action: 'cleanupScrapingGroup',
-      primaryTabId: currentTabId
-    });
+    if (currentTabId) {
+      await chrome.runtime.sendMessage({
+        action: 'cleanupScrapingGroup',
+        primaryTabId: currentTabId
+      });
+    }
   } catch (error) {
-    console.error('Error cleaning up scraping group:', error);
+    if (error.message.includes('Extension context invalidated')) {
+      console.warn('Extension context invalidated during cleanup - continuing anyway');
+    } else {
+      console.error('Error cleaning up scraping group:', error);
+    }
   }
 
   // Update final status
@@ -571,32 +619,17 @@ export function showDataSections() {
   document.getElementById('data-section').style.display = 'block';
   document.getElementById('stats-section').style.display = 'block';
   document.getElementById('sheets-section').style.display = 'block';
-
-  // Initialize connection status first
-  if (window.initializeConnectionStatus) {
-    window.initializeConnectionStatus();
-  }
-
-  // Initialize Google Sheets UI (will be handled by configuration modal module)
-  if (window.initializeGoogleSheetsUI) {
-    window.initializeGoogleSheetsUI();
-  }
-
 }
 
 
 function updateActionButtons(hasData) {
   const startBtn = document.getElementById('start-scraping');
+  if (!startBtn) return;
 
-  if (hasData) {
-    // Update start button to rescrape
-    startBtn.innerHTML = '<span class="icon">🔄</span>Rescrape';
-  } else {
-    // Reset to start scraping
-    startBtn.innerHTML = '<span class="icon">⚡</span>Start Scraping';
-  }
+  startBtn.innerHTML = hasData ? 
+    '<span class="icon">🔄</span>Rescrape' : 
+    '<span class="icon">⚡</span>Start Scraping';
   
-  // Update button state based on Google Sheets connection
   updateStartButtonState();
 }
 
@@ -606,13 +639,8 @@ function updateStartButtonState() {
   
   const isConnected = window.getAppsScriptConnected ? window.getAppsScriptConnected() : false;
   
-  if (isConnected) {
-    startBtn.disabled = false;
-    startBtn.classList.remove('disabled');
-  } else {
-    startBtn.disabled = true;
-    startBtn.classList.add('disabled');
-  }
+  startBtn.disabled = !isConnected;
+  startBtn.classList.toggle('disabled', !isConnected);
 }
 
 function displayScrapedData(data) {
@@ -806,23 +834,35 @@ function flattenToValues(data) {
 
 async function exportViaAppsScript(values, scriptUrl, { clear = false } = {}) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      action: 'exportToGoogleSheets',
-      data: values,
-      scriptUrl: scriptUrl,
-      options: { clear }
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
+    try {
+      chrome.runtime.sendMessage({
+        action: 'exportToGoogleSheets',
+        data: values,
+        scriptUrl: scriptUrl,
+        options: { clear }
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            reject(new Error('Extension was reloaded. Please refresh the page and try again.'));
+          } else {
+            reject(new Error(chrome.runtime.lastError.message));
+          }
+          return;
+        }
 
-      if (response.success) {
-        resolve(response.result);
+        if (response && response.success) {
+          resolve(response.result);
+        } else {
+          reject(new Error(response?.error || 'Unknown export error'));
+        }
+      });
+    } catch (error) {
+      if (error.message.includes('Extension context invalidated')) {
+        reject(new Error('Extension was reloaded. Please refresh the page and try again.'));
       } else {
-        reject(new Error(response.error));
+        reject(error);
       }
-    });
+    }
   });
 }
 
@@ -963,56 +1003,98 @@ async function saveScrapingState() {
   }
 
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      action: 'saveScrapingState',
-      state: state
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      if (response.success) {
-        resolve();
+    try {
+      chrome.runtime.sendMessage({
+        action: 'saveScrapingState',
+        state: state
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            console.warn('Extension context invalidated during state save - using localStorage backup');
+            resolve(); // Don't fail, we have localStorage backup
+          } else {
+            reject(new Error(chrome.runtime.lastError.message));
+          }
+          return;
+        }
+        if (response && response.success) {
+          resolve();
+        } else {
+          reject(new Error(response?.error || 'Unknown state save error'));
+        }
+      });
+    } catch (error) {
+      if (error.message.includes('Extension context invalidated')) {
+        console.warn('Extension context invalidated during state save - using localStorage backup');
+        resolve(); // Don't fail, we have localStorage backup
       } else {
-        reject(new Error(response.error));
+        reject(error);
       }
-    });
+    }
   });
 }
 
 async function getScrapingState() {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      action: 'getScrapingState'
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      if (response.success) {
-        resolve(response.state);
+    try {
+      chrome.runtime.sendMessage({
+        action: 'getScrapingState'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            console.warn('Extension context invalidated - returning null state');
+            resolve(null); // Return null instead of failing
+          } else {
+            reject(new Error(chrome.runtime.lastError.message));
+          }
+          return;
+        }
+        if (response && response.success) {
+          resolve(response.state);
+        } else {
+          reject(new Error(response?.error || 'Unknown state get error'));
+        }
+      });
+    } catch (error) {
+      if (error.message.includes('Extension context invalidated')) {
+        console.warn('Extension context invalidated - returning null state');
+        resolve(null); // Return null instead of failing
       } else {
-        reject(new Error(response.error));
+        reject(error);
       }
-    });
+    }
   });
 }
 
 async function clearScrapingState() {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      action: 'clearScrapingState'
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      if (response.success) {
-        resolve();
+    try {
+      chrome.runtime.sendMessage({
+        action: 'clearScrapingState'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            console.warn('Extension context invalidated during state clear - continuing anyway');
+            resolve(); // Don't fail, just continue
+          } else {
+            reject(new Error(chrome.runtime.lastError.message));
+          }
+          return;
+        }
+        if (response && response.success) {
+          resolve();
+        } else {
+          reject(new Error(response?.error || 'Unknown state clear error'));
+        }
+      });
+    } catch (error) {
+      if (error.message.includes('Extension context invalidated')) {
+        console.warn('Extension context invalidated during state clear - continuing anyway');
+        resolve(); // Don't fail, just continue
       } else {
-        reject(new Error(response.error));
+        reject(error);
       }
-    });
+    }
   });
 }
 

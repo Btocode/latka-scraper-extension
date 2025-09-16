@@ -98,15 +98,12 @@ function generateDataTable(headers, dataRows, filteredRows = null) {
             ${headers.map(header => {
               const cellValue = row[header] || '';
               // Format link fields with clickable links
-              if (header === 'company_links' && cellValue) {
-                const links = cellValue.split(',').filter(link => link.trim()).map(link => 
-                  `<a href="${link.trim()}" target="_blank" rel="noopener noreferrer">🔗</a>`
-                ).join(' ');
-                return `<td title="${cellValue}">${links}</td>`;
-              } else if (header === 'founder_links' && cellValue) {
-                const links = cellValue.split(',').filter(link => link.trim()).map(link => 
-                  `<a href="${link.trim()}" target="_blank" rel="noopener noreferrer">🔗</a>`
-                ).join(' ');
+              if ((header === 'Website' || header === 'LinkedIn' || header === 'Founder LinkedIn') && cellValue) {
+                const links = cellValue.split(',').filter(link => link.trim()).map(link => {
+                  const trimmedLink = link.trim();
+                  const icon = header === 'LinkedIn' || header === 'Founder LinkedIn' ? '💼' : '🌐';
+                  return `<a href="${trimmedLink}" target="_blank" rel="noopener noreferrer">${icon}</a>`;
+                }).join(' ');
                 return `<td title="${cellValue}">${links}</td>`;
               } else {
                 return `<td title="${cellValue}">${cellValue}</td>`;

@@ -3,14 +3,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // Extension installed
 });
 
-// Import hot reload in development
-if (chrome.runtime.getManifest && !chrome.runtime.getManifest().key) {
-  try {
-    importScripts('hot-reload.js');
-  } catch (error) {
-    // Hot reload script not found in production
-  }
-}
+// Hot reload functionality removed for production builds
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

@@ -15,104 +15,102 @@ export function setAppsScriptConnected(connected) {
 }
 
 export function getAppsScriptConnected() {
-  return localStorage.getItem('latka-apps-script-connected') === 'true';
+  const standardKey = localStorage.getItem('latka-apps-script-connected');
+  const altKey = localStorage.getItem('@latka-apps-script-connected');
+  
+  return standardKey === 'true' || altKey === 'true';
 }
 
+// Expose functions to global scope immediately to avoid race conditions
+window.getAppsScriptUrl = getAppsScriptUrl;
+window.setAppsScriptUrl = setAppsScriptUrl;
+window.getAppsScriptConnected = getAppsScriptConnected;
+window.setAppsScriptConnected = setAppsScriptConnected;
+
 export function clearBackupData() {
-  // Get all localStorage keys
   const keys = Object.keys(localStorage);
-  
-  // Remove all backup data keys
   keys.forEach(key => {
     if (key.startsWith('latka_backup_')) {
       localStorage.removeItem(key);
     }
   });
-  
-  console.log('🗑️ Backup data cleared after successful export');
+}
+
+// Migrate old localStorage keys
+function migrateLocalStorageKeys() {
+  const oldConnectedKey = localStorage.getItem('@latka-apps-script-connected');
+  if (oldConnectedKey) {
+    localStorage.setItem('latka-apps-script-connected', oldConnectedKey);
+    localStorage.removeItem('@latka-apps-script-connected');
+  }
 }
 
 export function initializeConnectionStatus() {
-  // Initialize connection status if Apps Script URL exists but connection flag doesn't
+  migrateLocalStorageKeys();
+  
   const appsScriptUrl = getAppsScriptUrl();
   const isConnected = getAppsScriptConnected();
   
   if (appsScriptUrl && !isConnected) {
-    console.log('🔧 Initializing connection status: URL exists, setting connected to true');
     setAppsScriptConnected(true);
   }
 }
 
-export function initializeGoogleSheetsUI() {
-  const isConnected = getAppsScriptConnected();
-  const appsScriptUrl = getAppsScriptUrl();
-  const sheetsText = document.getElementById('sheets-text');
-  const configureBtn = document.getElementById('configure-sheets');
-  const statusText = document.getElementById('status-text');
-  const configForm = document.getElementById('sheets-config-form');
-  const connectedActions = document.getElementById('sheets-connected-actions');
-  const urlInput = document.getElementById('sheets-url-input');
+export function initializeGoogleSheetsUI(retryCount = 0) {
+  // Get required DOM elements
+  const elements = {
+    sheetsText: document.getElementById('sheets-text'),
+    configureBtn: document.getElementById('configure-sheets'),
+    statusText: document.getElementById('status-text'),
+    configForm: document.getElementById('sheets-config-form'),
+    connectedActions: document.getElementById('sheets-connected-actions'),
+    urlInput: document.getElementById('sheets-url-input'),
+    saveBtn: document.getElementById('save-sheets-config')
+  };
 
-  console.log('🔧 Initializing Google Sheets UI:', { isConnected, hasUrl: !!appsScriptUrl });
-
-  // If we have an Apps Script URL but no connection flag, set it to connected
-  if (appsScriptUrl && !isConnected) {
-    console.log('🔧 Setting connection flag to true (URL exists but flag not set)');
-    setAppsScriptConnected(true);
+  // Check if all critical elements are available
+  const criticalElements = ['sheetsText', 'configureBtn', 'statusText'];
+  const missingElements = criticalElements.filter(key => !elements[key]);
+  
+  if (missingElements.length > 0 && retryCount < 3) {
+    setTimeout(() => initializeGoogleSheetsUI(retryCount + 1), 200);
+    return;
   }
 
-  // Re-check connection status after potential update
-  const finalConnected = getAppsScriptConnected();
+  // Initialize connection status
+  initializeConnectionStatus();
+  const isConnected = getAppsScriptConnected();
+  const appsScriptUrl = getAppsScriptUrl();
 
-  if (!finalConnected) {
-    // Apps Script not connected
-    if (sheetsText) {
-      sheetsText.textContent = 'No sheet connected';
+  // Update UI based on connection status
+  if (isConnected && appsScriptUrl) {
+    // Connected state
+    if (elements.sheetsText) elements.sheetsText.textContent = 'Ready to export';
+    if (elements.configureBtn) {
+      elements.configureBtn.textContent = 'Settings';
+      elements.configureBtn.classList.add('connected');
     }
-    if (configureBtn) {
-      configureBtn.textContent = 'Configure';
-      configureBtn.classList.remove('connected');
-    }
-    if (statusText) {
-      statusText.textContent = 'Configure Google Sheets';
-    }
-    if (configForm) {
-      configForm.style.display = 'none';
-    }
-    if (connectedActions) {
-      connectedActions.style.display = 'none';
-    }
-    // Disable save button when not connected
-    const saveBtn = document.getElementById('save-sheets-config');
-    if (saveBtn) {
-      saveBtn.disabled = true;
-    }
+    if (elements.statusText) elements.statusText.textContent = 'Ready to scrape';
+    if (elements.configForm) elements.configForm.style.display = 'none';
+    if (elements.connectedActions) elements.connectedActions.style.display = 'block';
+    if (elements.urlInput) elements.urlInput.value = appsScriptUrl;
+    if (elements.saveBtn) elements.saveBtn.disabled = false;
   } else {
-    // Apps Script is connected
-    if (sheetsText) {
-      sheetsText.textContent = 'Ready to export';
+    // Not connected state
+    if (elements.sheetsText) elements.sheetsText.textContent = 'No sheet connected';
+    if (elements.configureBtn) {
+      elements.configureBtn.textContent = 'Configure';
+      elements.configureBtn.classList.remove('connected');
     }
-    if (configureBtn) {
-      configureBtn.textContent = 'Settings';
-      configureBtn.classList.add('connected');
-    }
-    if (statusText) {
-      statusText.textContent = 'Ready to scrape';
-    }
-    if (configForm) {
-      configForm.style.display = 'none';
-    }
-    if (connectedActions) {
-      connectedActions.style.display = 'block';
-    }
-    if (urlInput && appsScriptUrl) {
-      urlInput.value = appsScriptUrl;
-    }
-    // Enable save button when connected
-    const saveBtn = document.getElementById('save-sheets-config');
-    if (saveBtn) {
-      saveBtn.disabled = false;
-    }
+    if (elements.statusText) elements.statusText.textContent = 'Configure Google Sheets';
+    if (elements.configForm) elements.configForm.style.display = 'none';
+    if (elements.connectedActions) elements.connectedActions.style.display = 'none';
+    if (elements.saveBtn) elements.saveBtn.disabled = true;
+  }
+
+  // Update start button state
+  if (window.updateStartButtonState) {
+    window.updateStartButtonState();
   }
 }
 
@@ -204,7 +202,6 @@ export function saveSheetsConfig() {
   
   if (!urlInput || !saveBtn) return;
   
-  // Check if save button is disabled (connection not verified)
   if (saveBtn.disabled) {
     showInlineStatus('Please test the connection first before saving', 'error');
     return;
@@ -212,12 +209,7 @@ export function saveSheetsConfig() {
   
   const appsScriptUrl = urlInput.value.trim();
   
-  if (!appsScriptUrl) {
-    showInlineStatus('Please enter an Apps Script URL', 'error');
-    return;
-  }
-  
-  if (!isValidAppsScriptUrl(appsScriptUrl)) {
+  if (!appsScriptUrl || !isValidAppsScriptUrl(appsScriptUrl)) {
     showInlineStatus('Please enter a valid Apps Script URL', 'error');
     return;
   }
@@ -225,18 +217,13 @@ export function saveSheetsConfig() {
   saveBtn.innerHTML = '⏳';
   saveBtn.disabled = true;
   
-  // Save the configuration
+  // Save configuration
   setAppsScriptUrl(appsScriptUrl);
   setAppsScriptConnected(true);
   
   // Update UI
   initializeGoogleSheetsUI();
   showInlineStatus('✅ Configuration saved successfully!', 'success');
-  
-  // Update start button state
-  if (window.updateStartButtonState) {
-    window.updateStartButtonState();
-  }
   
   setTimeout(() => {
     saveBtn.innerHTML = '💾';
@@ -245,18 +232,11 @@ export function saveSheetsConfig() {
 }
 
 export function disableSheetsConnection() {
-  // Clear configuration
   localStorage.removeItem('latka-apps-script-url');
   setAppsScriptConnected(false);
   
-  // Update UI
   initializeGoogleSheetsUI();
   showNotification('🗑️ Google Sheets disconnected. Configure to enable scraping.', 'info');
-  
-  // Update start button state
-  if (window.updateStartButtonState) {
-    window.updateStartButtonState();
-  }
 }
 
 export function showInlineStatus(message, type) {
@@ -273,11 +253,6 @@ export function showInlineStatus(message, type) {
   }, 5000);
 }
 
-export function showGoogleSheetsModal() {
-  // This function is now deprecated in favor of inline configuration
-  // But keeping it for backward compatibility
-  toggleSheetsConfig();
-}
 
 // Helper functions
 function isValidAppsScriptUrl(url) {
@@ -314,15 +289,11 @@ async function testAppsScriptConnection(scriptUrl) {
   });
 }
 
-// Expose functions to global scope for integration with other modules
-window.getAppsScriptUrl = getAppsScriptUrl;
-window.setAppsScriptUrl = setAppsScriptUrl;
-window.getAppsScriptConnected = getAppsScriptConnected;
-window.setAppsScriptConnected = setAppsScriptConnected;
+
+// Expose remaining functions to global scope
 window.clearBackupData = clearBackupData;
 window.initializeConnectionStatus = initializeConnectionStatus;
 window.initializeGoogleSheetsUI = initializeGoogleSheetsUI;
-window.showGoogleSheetsModal = showGoogleSheetsModal;
 window.toggleSheetsConfig = toggleSheetsConfig;
 window.testSheetsConnection = testSheetsConnection;
 window.saveSheetsConfig = saveSheetsConfig;

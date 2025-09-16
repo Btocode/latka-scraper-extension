@@ -51,12 +51,7 @@ module.exports = (env, argv) => {
             from: 'src/popup/popup.html',
             to: 'popup.html',
           },
-          ...(isProduction ? [] : [
-            {
-              from: 'hot-reload.js',
-              to: 'hot-reload.js',
-            }
-          ]),
+          // Hot reload script removed from production builds
         ],
       }),
     ],

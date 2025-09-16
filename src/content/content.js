@@ -20,8 +20,7 @@ import {
 import { 
   getAppsScriptUrl, 
   setAppsScriptUrl, 
-  initializeGoogleSheetsUI, 
-  showGoogleSheetsModal 
+  initializeGoogleSheetsUI
 } from './configuration-modal.js';
 
 import { 
@@ -47,44 +46,44 @@ window.receivePageData = receivePageData;
 function initializeSidebar() {
   const sidebar = createSidebar();
   
-  // Add event listeners
-  document.getElementById('close-sidebar').addEventListener('click', hideSidebar);
-  document.getElementById('toggle-keep-open').addEventListener('click', toggleKeepOpen);
-  document.getElementById('start-scraping').addEventListener('click', startScraping);
-  document.getElementById('configure-sheets').addEventListener('click', () => {
-    if (window.toggleSheetsConfig) {
-      window.toggleSheetsConfig();
+  // Add event listeners with error handling
+  const addSafeEventListener = (elementId, handler) => {
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.addEventListener('click', handler);
     }
+  };
+  
+  addSafeEventListener('close-sidebar', hideSidebar);
+  addSafeEventListener('toggle-keep-open', toggleKeepOpen);
+  addSafeEventListener('start-scraping', startScraping);
+  
+  addSafeEventListener('configure-sheets', () => {
+    window.toggleSheetsConfig?.();
   });
   
-  // Add event listeners for inline configuration
-  document.getElementById('test-sheets-connection').addEventListener('click', () => {
-    if (window.testSheetsConnection) {
-      window.testSheetsConnection();
-    }
+  addSafeEventListener('test-sheets-connection', () => {
+    window.testSheetsConnection?.();
   });
   
-  document.getElementById('save-sheets-config').addEventListener('click', () => {
-    if (window.saveSheetsConfig) {
-      window.saveSheetsConfig();
-    }
+  addSafeEventListener('save-sheets-config', () => {
+    window.saveSheetsConfig?.();
   });
   
-  document.getElementById('disable-sheets').addEventListener('click', () => {
-    if (window.disableSheetsConnection) {
-      window.disableSheetsConnection();
-    }
+  addSafeEventListener('disable-sheets', () => {
+    window.disableSheetsConnection?.();
   });
   
-  // Add event listener for URL input changes to disable save button
-  document.getElementById('sheets-url-input').addEventListener('input', () => {
-    const saveBtn = document.getElementById('save-sheets-config');
-    if (saveBtn) {
-      saveBtn.disabled = true;
-    }
-  });
+  // URL input change handler
+  const urlInput = document.getElementById('sheets-url-input');
+  if (urlInput) {
+    urlInput.addEventListener('input', () => {
+      const saveBtn = document.getElementById('save-sheets-config');
+      if (saveBtn) saveBtn.disabled = true;
+    });
+  }
   
-  // Add event listener for view all data link (using observer pattern since element may not exist yet)
+  // View all data link observer
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
@@ -124,18 +123,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Add hot reload support
-if (chrome.runtime && chrome.runtime.onConnect) {
-  chrome.runtime.onConnect.addListener(function(port) {
-    if (port.name === 'devtools') {
-      port.onMessage.addListener(function(message) {
-        if (message === 'reload') {
-          location.reload();
-        }
-      });
-    }
-  });
-}
+// Hot reload support removed for production builds
 
 // Check if this is a background scraping tab
 async function checkIfBackgroundScrapingTab() {
@@ -151,6 +139,10 @@ async function checkIfBackgroundScrapingTab() {
 
     return false;
   } catch (error) {
+    if (error.message.includes('Extension context invalidated')) {
+      console.warn('Extension context invalidated - assuming not a background tab');
+      return false;
+    }
     console.error('Error checking background tab status:', error);
     return false;
   }
@@ -171,20 +163,36 @@ async function handleBackgroundTabScraping(primaryTabId, pageNumber) {
 
     // Always send data back to primary tab, even if empty
     // This allows the primary tab to handle non-existent pages properly
-    await chrome.runtime.sendMessage({
-      action: 'sendDataToPrimaryTab',
-      data: pageData,
-      primaryTabId: primaryTabId,
-      pageNumber: pageNumber,
-      hasData: pageData.length > 0
-    });
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'sendDataToPrimaryTab',
+        data: pageData,
+        primaryTabId: primaryTabId,
+        pageNumber: pageNumber,
+        hasData: pageData.length > 0
+      });
+    } catch (error) {
+      if (error.message.includes('Extension context invalidated')) {
+        console.warn('Extension context invalidated - cannot send data to primary tab');
+      } else {
+        throw error;
+      }
+    }
 
     // Close this background tab after sending data
     // Give a bit more time if auto-export is happening
     setTimeout(async () => {
-      await chrome.runtime.sendMessage({
-        action: 'closeHiddenTab'
-      });
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'closeHiddenTab'
+        });
+      } catch (error) {
+        if (error.message.includes('Extension context invalidated')) {
+          console.warn('Extension context invalidated - cannot close hidden tab');
+        } else {
+          console.error('Error closing hidden tab:', error);
+        }
+      }
     }, 2000); // Increased delay to allow for export
 
   } catch (error) {
@@ -193,17 +201,19 @@ async function handleBackgroundTabScraping(primaryTabId, pageNumber) {
   }
 }
 
+
 // Direct scraping function for background tabs (duplicate of sidebar logic)
 function scrapeLatkaTableDirect() {
   const tables = Array.from(document.querySelectorAll('table'));
   const requestedColumns = [
     'Name',
-    'company_links', // Column for comma-separated company links
+    'Website', // Company website URL
+    'LinkedIn', // Company LinkedIn URL
     'Funding',
     'Valuation',
     'Growth',
     'Founder',
-    'founder_links', // Column for comma-separated founder links
+    'Founder LinkedIn', // Founder LinkedIn profile only
     'Team Size',
     'Founded',
     'Location',
@@ -236,9 +246,9 @@ function scrapeLatkaTableDirect() {
           let cell = null;
 
           // Determine which table cell to look in based on the requested column
-          if (reqCol === 'Name' || reqCol === 'company_links') {
+          if (reqCol === 'Name' || reqCol === 'Website' || reqCol === 'LinkedIn') {
               cellIndex = headers.indexOf('Name');
-          } else if (reqCol === 'Founder' || reqCol === 'founder_links') {
+          } else if (reqCol === 'Founder' || reqCol === 'Founder LinkedIn') {
                cellIndex = headers.indexOf('Founder');
           } else {
                cellIndex = headers.indexOf(reqCol);
@@ -247,18 +257,57 @@ function scrapeLatkaTableDirect() {
           if (cellIndex > -1 && cellIndex < cells.length) {
                cell = cells[cellIndex];
 
-               if (reqCol === 'company_links') {
-                  // Collect all link hrefs from the Name cell and join with comma
-                  const links = Array.from(cell.querySelectorAll('a'));
-                  rowData[reqCol] = links.map(link => link.href).join(',');
+               if (reqCol === 'Website') {
+                  // Look for website URL in anchor tags with aria-label="website url"
+                  const websiteLinks = [];
+                  const websiteLink = cell.querySelector('a[aria-label="website url"]');
+                  if (websiteLink && websiteLink.href) {
+                    websiteLinks.push(websiteLink.href);
+                  }
+                  rowData[reqCol] = websiteLinks.join(',');
+                  
+               } else if (reqCol === 'LinkedIn') {
+                  // Look for Company LinkedIn with aria-label="Company linkedIn"
+                  const linkedinLinks = [];
+                  const linkedinLink = cell.querySelector('a[aria-label="Company linkedIn"]');
+                  if (linkedinLink && linkedinLink.href) {
+                    linkedinLinks.push(linkedinLink.href);
+                  }
+                  rowData[reqCol] = linkedinLinks.join(',');
 
-               } else if (reqCol === 'founder_links') {
-                   // Collect all link hrefs from the Founder cell and join with comma
+               } else if (reqCol === 'Founder LinkedIn') {
+                   // Collect LinkedIn links from both <a> elements and <button> onclick handlers
+                  const linkedinLinks = [];
+                  
+                  // Check for <a> elements with LinkedIn URLs
                   const links = Array.from(cell.querySelectorAll('a'));
-                  rowData[reqCol] = links.map(link => link.href).join(',');
+                  links.forEach(link => {
+                    if (link.href && link.href.includes('linkedin.com')) {
+                      linkedinLinks.push(link.href);
+                    }
+                  });
+                  
+                  // Check for <button> elements with LinkedIn URLs in onclick handlers
+                  const buttons = Array.from(cell.querySelectorAll('button[onclick]'));
+                  buttons.forEach(button => {
+                    const onclick = button.getAttribute('onclick');
+                    if (onclick) {
+                      // Extract LinkedIn URL from onclick handler like: window.open('https://www.linkedin.com/in/...')
+                      const linkedinMatch = onclick.match(/linkedin\.com\/[^'"\)]+/gi);
+                      if (linkedinMatch) {
+                        linkedinMatch.forEach(match => {
+                          const fullUrl = match.startsWith('http') ? match : 'https://www.' + match;
+                          linkedinLinks.push(fullUrl);
+                        });
+                      }
+                    }
+                  });
+                  
+                  // Remove duplicates and join
+                  const uniqueLinkedinLinks = [...new Set(linkedinLinks)];
+                  rowData[reqCol] = uniqueLinkedinLinks.join(',');
 
-               }
-              else {
+               } else {
                 // For regular columns, just get the text content
                 rowData[reqCol] = cell.innerText.trim();
               }
